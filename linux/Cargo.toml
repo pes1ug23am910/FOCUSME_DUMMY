@@ -9,7 +9,7 @@ rust-version = "1.75"
 
 [dependencies]
 # eBPF
-libbpf-rs = "0.23"
+libbpf-rs = "0.26"
 
 # System
 nix = { version = "0.28", features = ["fs", "signal", "process", "net"] }
