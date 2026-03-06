@@ -30,7 +30,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [build-dependencies]
-libbpf-cargo = "0.23"
+libbpf-cargo = "0.26"
 
 [[bin]]
 name = "focusme-bpf-loader"
