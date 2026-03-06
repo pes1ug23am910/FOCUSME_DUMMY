@@ -1,0 +1,60 @@
+{
+    "manifest_version": 3,
+    "name": "FocusMe Browser Enforcer",
+    "version": "1.0.0",
+    "description": "Browser enforcement extension for FocusMe — blocks distracting websites by schedule, quota, and lockdown.",
+
+    "permissions": [
+        "declarativeNetRequest",
+        "declarativeNetRequestWithHostAccess",
+        "declarativeNetRequestFeedback",
+        "nativeMessaging",
+        "storage",
+        "tabs",
+        "alarms"
+    ],
+
+    "host_permissions": [
+        "<all_urls>"
+    ],
+
+    "background": {
+        "service_worker": "dist/background.js",
+        "type": "module"
+    },
+
+    "content_scripts": [
+        {
+            "matches": ["<all_urls>"],
+            "js": ["dist/content_scripts/element_blocker.js"],
+            "run_at": "document_idle"
+        }
+    ],
+
+    "declarative_net_request": {
+        "rule_resources": [
+            {
+                "id": "focusme_dynamic",
+                "enabled": true,
+                "path": "rules/dynamic_rules.json"
+            }
+        ]
+    },
+
+    "action": {
+        "default_popup": "popup/popup.html",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        }
+    },
+
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+
+    "minimum_chrome_version": "102"
+}

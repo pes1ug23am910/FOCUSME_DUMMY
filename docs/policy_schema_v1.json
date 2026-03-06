@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://focusme.app/schemas/policy_v1.json",
+  "title": "FocusMe Focus Plan Policy Schema v1.0",
+  "description": "Defines the structure of a Focus Plan as stored in the policy database and exchanged over IPC. Per FocusMe Build Plan Appendix C.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "plan_id",
+    "name",
+    "enabled",
+    "forced_mode",
+    "protection",
+    "schedules",
+    "app_rules",
+    "url_rules",
+    "created_at",
+    "modified_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the policy schema. Current: 1.0.0",
+      "const": "1.0.0"
+    },
+    "plan_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique identifier for this plan (UUIDv4)"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Human-readable plan name"
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Whether this plan is currently active"
+    },
+    "forced_mode": {
+      "type": "boolean",
+      "description": "If true, plan cannot be stopped mid-session once activated"
+    },
+    "forced_mode_max_duration_s": {
+      "type": "integer",
+      "minimum": 60,
+      "maximum": 86400,
+      "default": 86400,
+      "description": "Maximum duration in seconds for Forced Mode (default 24h cap per Section 8.3)"
+    },
+    "protection": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["none", "argon2id_password", "random_challenge"],
+          "description": "Protection mechanism for plan modification/stop"
+        },
+        "hash": {
+          "type": "string",
+          "description": "Argon2id hash of PIN/password (only when type=argon2id_password)"
+        },
+        "challenge_required": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, a random character challenge is required in addition to password"
+        }
+      },
+      "if": {
+        "properties": { "type": { "const": "argon2id_password" } }
+      },
+      "then": {
+        "required": ["type", "hash"]
+      }
+    },
+    "schedules": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "$ref": "#/$defs/schedule"
+      },
+      "description": "Time windows when this plan is active"
+    },
+    "app_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/app_rule"
+      },
+      "description": "Application blocking/allowing rules"
+    },
+    "url_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/url_rule"
+      },
+      "description": "URL/domain blocking/allowing rules"
+    },
+    "quotas": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/quota"
+      },
+      "default": [],
+      "description": "Daily/weekly usage quotas for apps or domains"
+    },
+    "pomodoro": {
+      "$ref": "#/$defs/pomodoro",
+      "description": "Optional Pomodoro timer settings synced with this plan"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of plan creation"
+    },
+    "modified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of last modification"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "schedule": {
+      "type": "object",
+      "required": ["days", "start_time", "end_time", "timezone"],
+      "properties": {
+        "days": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 7,
+          "items": {
+            "type": "string",
+            "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+          },
+          "uniqueItems": true,
+          "description": "Days of the week this schedule is active"
+        },
+        "start_time": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+          "description": "Start time in HH:MM format (24-hour)"
+        },
+        "end_time": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+          "description": "End time in HH:MM format (24-hour)"
+        },
+        "timezone": {
+          "type": "string",
+          "description": "IANA timezone identifier (e.g., 'America/New_York')"
+        }
+      },
+      "additionalProperties": false
+    },
+    "app_rule": {
+      "type": "object",
+      "required": ["type", "match", "value"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["block", "allow"],
+          "description": "Whether to block or allow this app"
+        },
+        "match": {
+          "type": "string",
+          "enum": ["process_name", "path_prefix", "path_exact", "bundle_id"],
+          "description": "How to match the application"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024,
+          "description": "Process name, path, or bundle ID to match"
+        }
+      },
+      "additionalProperties": false
+    },
+    "url_rule": {
+      "type": "object",
+      "required": ["type", "match", "value"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["block", "allow"],
+          "description": "Whether to block or allow this URL"
+        },
+        "match": {
+          "type": "string",
+          "enum": ["domain", "wildcard", "path", "regex"],
+          "description": "URL matching strategy"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253,
+          "description": "Domain, wildcard pattern, path, or regex to match. Max 253 chars per RFC 1035."
+        }
+      },
+      "additionalProperties": false
+    },
+    "quota": {
+      "type": "object",
+      "required": ["target_type", "target", "daily_limit_s"],
+      "properties": {
+        "target_type": {
+          "type": "string",
+          "enum": ["domain", "app", "category"],
+          "description": "What the quota applies to"
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253,
+          "description": "Domain name, app identifier, or category name"
+        },
+        "daily_limit_s": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 86400,
+          "description": "Daily usage limit in seconds"
+        },
+        "rationing": {
+          "type": "object",
+          "properties": {
+            "launches_per_day": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Max number of launches/visits per day"
+            },
+            "min_break_s": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 86400,
+              "description": "Minimum break between launches in seconds"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "pomodoro": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether Pomodoro timer is active for this plan"
+        },
+        "work_duration_s": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 7200,
+          "default": 1500,
+          "description": "Work interval duration in seconds (default 25 min)"
+        },
+        "break_duration_s": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 3600,
+          "default": 300,
+          "description": "Short break duration in seconds (default 5 min)"
+        },
+        "long_break_after": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 10,
+          "default": 4,
+          "description": "Number of work intervals before a long break"
+        },
+        "long_break_duration_s": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 7200,
+          "default": 900,
+          "description": "Long break duration in seconds (default 15 min)"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,34 @@
+# FocusMe CODEOWNERS
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default — require review from core team
+*                           @focusme/core-eng
+
+# Daemon (Rust) — Stream A
+daemon/                     @focusme/daemon-eng
+linux/                      @focusme/daemon-eng
+
+# macOS (Swift) — Stream A
+macos/                      @focusme/daemon-eng
+
+# Browser Extension (TypeScript) — Stream B
+extension/                  @focusme/extension-eng
+
+# UI Shell (React/Tauri) — Stream B
+ui/                         @focusme/extension-eng
+
+# Android (Kotlin) — Stream C
+android/                    @focusme/android-eng
+
+# CI/CD & DevOps
+.github/                    @focusme/core-eng
+
+# Documentation & Specs
+docs/                       @focusme/core-eng
+
+# Security-sensitive files — require security review
+daemon/src/plan_protection.rs   @focusme/security
+daemon/src/forced_mode.rs       @focusme/security
+daemon/src/ipc_server.rs        @focusme/security
+daemon/src/wfp_manager.rs       @focusme/security
+extension/src/background.ts     @focusme/security

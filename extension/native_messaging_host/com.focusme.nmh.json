@@ -1,0 +1,9 @@
+{
+  "name": "com.focusme.nmh",
+  "description": "FocusMe Native Messaging Host",
+  "path": "focusme-nmh.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://EXTENSION_ID_HERE/"
+  ]
+}

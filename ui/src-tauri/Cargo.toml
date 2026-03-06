@@ -1,0 +1,37 @@
+[package]
+name = "focusme-tauri"
+version = "0.1.0"
+edition = "2021"
+authors = ["FocusMe Engineering Team"]
+description = "FocusMe Tauri backend — native IPC bridge, system tray, and local command handling"
+license = "Proprietary"
+rust-version = "1.75"
+
+[lib]
+name = "focusme_tauri"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+tauri-plugin-shell = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rmp-serde = "1.1"
+interprocess = "2.0"
+tokio = { version = "1.35", features = ["rt", "sync", "time"] }
+anyhow = "1.0"
+tracing = "0.1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

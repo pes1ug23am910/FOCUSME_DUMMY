@@ -1,0 +1,300 @@
+# FocusMe .gitignore
+# Production-grade exclusion list for multi-platform productivity enforcement system
+
+# ============================================================================
+# RUST BUILD ARTIFACTS
+# ============================================================================
+/target/
+**/target/
+daemon/target/
+backend/target/
+linux/target/
+extension/native_messaging_host/target/
+**/*.rs.bk
+**/*.rmeta
+Cargo.lock
+!daemon/Cargo.lock
+!backend/Cargo.lock
+!extension/native_messaging_host/Cargo.lock
+
+# ============================================================================
+# NODE.JS / NPM / YARN
+# ============================================================================
+node_modules/
+**/node_modules/
+extension/node_modules/
+ui/node_modules/
+extension/dist/
+extension/build/
+ui/dist/
+ui/build/
+ui/out/
+*.tsbuildinfo
+.npm/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+lerna-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+
+# ============================================================================
+# TAURI / ELECTRON BUILD OUTPUTS
+# ============================================================================
+ui/src-tauri/target/
+ui/src-tauri/WixTools/
+ui/src-tauri/gen/
+
+# ============================================================================
+# MACOS / XCODE
+# ============================================================================
+macos/build/
+macos/DerivedData/
+macos/*.xcworkspace/xcuserdata/
+macos/*.xcodeproj/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.xcscmblueprint
+.DS_Store
+._*
+
+# ============================================================================
+# ANDROID / GRADLE
+# ============================================================================
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+android/local.properties
+android/*.jks
+android/*.keystore
+android/.cxx/
+android/.externalNativeBuild/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# ============================================================================
+# LINUX-SPECIFIC
+# ============================================================================
+linux/bpf/*.o
+linux/bpf/*.ll
+linux/bpf/vmlinux.h
+*.ko
+*.mod.c
+*.order
+*.symvers
+
+# ============================================================================
+# WINDOWS BUILD ARTIFACTS
+# ============================================================================
+packaging/windows/build/
+packaging/windows/Output/
+*.msi
+*.msm
+*.msp
+*.wixobj
+*.wixpdb
+
+# ============================================================================
+# GENERAL BUILD / PACKAGING
+# ============================================================================
+*.exe
+*.dll
+*.so
+*.dylib
+*.pkg
+*.dmg
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+dist/
+build/
+out/
+
+# ============================================================================
+# IDE / EDITOR
+# ============================================================================
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+*.iml
+Thumbs.db
+Desktop.ini
+
+# ============================================================================
+# SECRETS & CREDENTIALS (NEVER COMMIT)
+# ============================================================================
+*.pem
+*.p12
+*.pfx
+*.key
+*.cert
+*.cer
+*.crt
+*.csr
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
+secrets/
+credentials/
+private/
+service-account*.json
+
+# ============================================================================
+# DATABASES & DATA FILES
+# ============================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.db-journal
+
+# ============================================================================
+# LOGS & DEBUGGING
+# ============================================================================
+*.log
+logs/
+*.log.*
+crash-reports/
+*.dmp
+*.stackdump
+*.prof
+*.trace
+
+# ============================================================================
+# TEMPORARY / CACHE FILES
+# ============================================================================
+tmp/
+temp/
+cache/
+*.tmp
+*.temp
+*.cache
+*.bak
+*.backup
+*.old
+*~
+.cache/
+
+# ============================================================================
+# DOCUMENTATION TEMP FILES
+# ============================================================================
+docs/*.pdf.tmp
+*.swp
+
+# ============================================================================
+# OS-SPECIFIC
+# ============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# ============================================================================
+# TESTING
+# ============================================================================
+coverage/
+.nyc_output/
+*.lcov
+htmlcov/
+.pytest_cache/
+.coverage
+.coverage.*
+
+# ============================================================================
+# DOCKER (if using local development containers)
+# ============================================================================
+docker-compose.override.yml
+.dockerignore.local
+
+# ============================================================================
+# LARGE ASSETS / MODELS (DO NOT COMMIT)
+# ============================================================================
+# Add paths to any downloaded models, datasets, or large binary assets here
+models/
+*.onnx
+*.pt
+*.pth
+*.h5
+*.ckpt
+*.safetensors
+datasets/
+data/raw/
+data/processed/
+
+# ============================================================================
+# PERSONAL NOTES & SCRATCH
+# ============================================================================
+scratch/
+notes.txt
+TODO.local.md
+NOTES.md
+
+# ============================================================================
+# INTERNAL DEVELOPMENT / SESSION FILES (DO NOT COMMIT)
+# ============================================================================
+# Session status trackers
+docs/STATUS_TRACKER*.md
+STATUS_TRACKER*.md
+
+# Resume/Session prompts and copilot guides
+docs/FocusMe_Resume_Prompt*.md
+docs/FocusMe_Copilot_*.md
+docs/*_Resume_Prompt*.md
+docs/*_Copilot_*.md
+
+# Session logs
+docs/session_log.md
+session_log.md
+
+# Internal development archives
+docs/archives/
+
+# Draft documents (Word/Office)
+docs/*.docx
+docs/*.doc
+*.docx
+*.doc
+
+# Other internal docs
+docs/*_internal.md
+*_internal.md
+*_draft.md
+*_WIP.md

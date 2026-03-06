@@ -1,0 +1,77 @@
+; ============================================================
+; FILE:        enterprise.mst
+; MODULE:      Phase 4 — Packaging > Windows MSI Transform
+; TASK:        T-053
+; AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+; GENERATED:   Session 4
+; PURPOSE:     Enterprise MST (transform) stub for GPO deployment.
+;              Real .mst files are binary — this is a specification
+;              document that defines the transform properties.
+;              Use Orca or WiX to generate the actual .mst binary.
+; ============================================================
+;
+; ENTERPRISE MST — Transform Property Table
+; ==========================================
+;
+; This transform modifies the base FocusMe_x64.msi for enterprise
+; deployment via Group Policy (GPO) or SCCM/Intune.
+;
+; Apply: msiexec /i FocusMe_x64.msi TRANSFORMS=enterprise.mst /qn
+;
+; ┌──────────────────────┬──────────────────────────────────────┐
+; │ Property             │ Value                                │
+; ├──────────────────────┼──────────────────────────────────────┤
+; │ SILENT_INSTALL       │ 1                                    │
+; │ ALLUSERS             │ 1                                    │
+; │ REBOOT               │ ReallySuppress                       │
+; │ ARPNOREMOVE          │ 1  (prevent user uninstall)          │
+; │ ARPNOMODIFY          │ 1  (prevent user modify)             │
+; │ ARPNOREPAIR          │ 1  (prevent user repair)             │
+; │ MSIINSTALLPERUSER    │ 0  (force per-machine)               │
+; │ INSTALLDIR           │ [ProgramFiles64Folder]FocusMe\       │
+; │ LAUNCH_ON_INSTALL    │ 0  (don't launch UI after install)   │
+; │ REGISTER_CHROME_NMH  │ 1  (register Chrome NMH)             │
+; │ REGISTER_EDGE_NMH    │ 1  (register Edge NMH)               │
+; │ REGISTER_FIREFOX_NMH │ 1  (register Firefox NMH)            │
+; └──────────────────────┴──────────────────────────────────────┘
+;
+; USAGE SCENARIOS:
+;
+; 1. GPO Software Installation:
+;    - Assign to Computer Configuration > Policies > Software Settings
+;    - Add FocusMe_x64.msi with enterprise.mst as modification
+;    - Installs silently at next computer startup
+;
+; 2. SCCM/Intune:
+;    - Package: msiexec /i FocusMe_x64.msi TRANSFORMS=enterprise.mst /qn
+;    - Detection rule: HKLM\SOFTWARE\FocusMe\WFP\Installed = 1
+;    - Uninstall: msiexec /x {E8A3F4B1-7C2D-4E6A-9B5F-1D3A8C7E2F4B} /qn
+;
+; 3. PowerShell (manual):
+;    - Start-Process msiexec -ArgumentList '/i','FocusMe_x64.msi',
+;      'TRANSFORMS=enterprise.mst','/qn' -Wait -NoNewWindow
+;
+; TO BUILD THE ACTUAL .MST:
+;
+; Option A — Using Orca (Windows SDK):
+;   1. Open FocusMe_x64.msi in Orca
+;   2. Transform > New Transform
+;   3. Modify the Property table with the values above
+;   4. Transform > Generate Transform > Save as enterprise.mst
+;
+; Option B — Using WiX:
+;   wix mst FocusMe_x64.msi enterprise.msi -o enterprise.mst
+;   (where enterprise.msi has the property overrides above)
+;
+; Option C — Using msitran.exe (Platform SDK):
+;   msitran -a enterprise.mst FocusMe_x64.msi
+;
+; SECURITY NOTES:
+;
+; - ARPNOREMOVE=1 prevents users from uninstalling via Add/Remove Programs.
+;   Admin-level uninstall is still possible via msiexec /x with elevation.
+; - The daemon service runs as LocalSystem and auto-restarts on failure.
+; - EV code signature is verified during install (custom action).
+; - WFP callout driver requires WHQL signing (separate from EV cert).
+;
+; ============================================================

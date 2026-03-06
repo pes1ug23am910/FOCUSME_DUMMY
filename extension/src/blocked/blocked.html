@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blocked by FocusMe</title>
+  <link rel="stylesheet" href="blocked.css">
+</head>
+<body>
+  <div class="blocked-container">
+    <div class="blocked-icon">
+      <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+      </svg>
+    </div>
+
+    <h1 class="blocked-title">This site is blocked</h1>
+
+    <p class="blocked-domain" id="blocked-domain"></p>
+
+    <p class="blocked-message">
+      This website is blocked by your FocusMe plan.
+      Stay focused and work on what matters!
+    </p>
+
+    <div class="blocked-info" id="plan-info"></div>
+
+    <div class="blocked-actions">
+      <button id="go-back-btn" class="btn btn-secondary">Go Back</button>
+      <a href="https://www.focusme.com" class="btn btn-muted">Learn More</a>
+    </div>
+
+    <footer class="blocked-footer">
+      <p>Powered by <strong>FocusMe</strong></p>
+    </footer>
+  </div>
+
+  <script src="blocked.js"></script>
+</body>
+</html>

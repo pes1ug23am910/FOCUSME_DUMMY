@@ -1,0 +1,250 @@
+#!/bin/bash
+# ============================================================
+# FILE:        postinstall
+# MODULE:      Layer 5 — Installer Scripts > macOS PKG Post-Install
+# TASK:        T-054
+# PLATFORM:    macOS 13.0+ (Ventura and later)
+# AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+# SESSION:     5
+# DEPENDENCIES: launchctl, systemextensionsctl, mkdir, chmod, cp
+# TEST COVERAGE: Installer checklist M-01 through M-08
+# KNOWN LIMITATIONS:
+#   - System Extension approval requires user interaction (macOS prompt)
+#   - Network Extension approval requires user interaction (macOS prompt)
+#   - [BLOCKED T-002]: ESF entitlement must be approved before notarization
+# ============================================================
+set -euo pipefail
+
+# ────────────────────────────────────────────────────────────
+# Configuration
+# ────────────────────────────────────────────────────────────
+readonly APP_BUNDLE="/Applications/FocusMe.app"
+readonly DAEMON_BIN="${APP_BUNDLE}/Contents/MacOS/focusme-daemon"
+readonly PLIST_SRC="${APP_BUNDLE}/Contents/Resources/com.focusme.daemon.plist"
+readonly PLIST_DST="/Library/LaunchDaemons/com.focusme.daemon.plist"
+readonly LOG_DIR="/Library/Logs/FocusMe"
+readonly NMH_MANIFEST="com.focusme.nmh.json"
+readonly NMH_BIN="${APP_BUNDLE}/Contents/MacOS/focusme-native-messaging-host"
+
+# Team ID placeholder — replace with actual Apple Developer Team ID
+readonly TEAM_ID="FOCUSME_TEAM_ID"
+readonly SYSEXT_BUNDLE_ID="com.focusme.systemextension"
+
+# NMH manifest directories (per-user — run as logged-in user via installer)
+readonly CHROME_NMH_DIR="${HOME}/Library/Application Support/Google/Chrome/NativeMessagingHosts"
+readonly FIREFOX_NMH_DIR="${HOME}/Library/Application Support/Mozilla/NativeMessagingHosts"
+readonly EDGE_NMH_DIR="${HOME}/Library/Application Support/Microsoft Edge/NativeMessagingHosts"
+
+# ────────────────────────────────────────────────────────────
+# Logging
+# ────────────────────────────────────────────────────────────
+log_info() {
+    echo "[FocusMe postinstall] INFO: $*"
+}
+
+log_warn() {
+    echo "[FocusMe postinstall] WARN: $*" >&2
+}
+
+log_error() {
+    echo "[FocusMe postinstall] ERROR: $*" >&2
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 1: Verify macOS version
+# ────────────────────────────────────────────────────────────
+check_macos_version() {
+    local version
+    version=$(sw_vers -productVersion 2>/dev/null || echo "0.0")
+    local major
+    major=$(echo "$version" | cut -d. -f1)
+
+    if [ "$major" -lt 13 ]; then
+        log_error "FocusMe requires macOS 13.0 (Ventura) or later. Found: $version"
+        exit 1
+    fi
+
+    log_info "macOS version $version — OK"
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 2: Set permissions on app bundle
+# ────────────────────────────────────────────────────────────
+set_permissions() {
+    log_info "Setting permissions on app bundle..."
+
+    chmod -R 755 "${APP_BUNDLE}"
+    chown -R root:wheel "${APP_BUNDLE}"
+
+    # Daemon binary must be owned by root for LaunchDaemon
+    if [ -f "${DAEMON_BIN}" ]; then
+        chmod 755 "${DAEMON_BIN}"
+        chown root:wheel "${DAEMON_BIN}"
+    fi
+
+    log_info "Permissions set"
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 3: Install LaunchDaemon
+# ────────────────────────────────────────────────────────────
+install_launch_daemon() {
+    log_info "Installing LaunchDaemon..."
+
+    # Copy plist to /Library/LaunchDaemons/
+    if [ -f "${PLIST_SRC}" ]; then
+        cp -f "${PLIST_SRC}" "${PLIST_DST}"
+        chown root:wheel "${PLIST_DST}"
+        chmod 644 "${PLIST_DST}"
+    else
+        log_error "LaunchDaemon plist not found at ${PLIST_SRC}"
+        exit 1
+    fi
+
+    # Load the daemon
+    # Use launchctl bootstrap for macOS 13+ (modern API)
+    if launchctl bootstrap system "${PLIST_DST}" 2>/dev/null; then
+        log_info "LaunchDaemon bootstrapped successfully"
+    else
+        # Fallback to legacy load command
+        launchctl load -w "${PLIST_DST}" 2>/dev/null || true
+        log_info "LaunchDaemon loaded (legacy method)"
+    fi
+
+    # Verify daemon is running
+    sleep 2
+    if launchctl list | grep -q "com.focusme.daemon"; then
+        log_info "FocusMe daemon is running"
+    else
+        log_warn "Daemon may not have started — check: sudo launchctl list | grep focusme"
+    fi
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 4: Register System Extension
+# ────────────────────────────────────────────────────────────
+register_system_extension() {
+    log_info "Registering System Extension..."
+
+    # System Extensions require user approval via macOS Security & Privacy
+    # The activation request will trigger a system prompt
+    if command -v systemextensionsctl &>/dev/null; then
+        # Note: This command may require MDM approval profiles in managed environments
+        systemextensionsctl activate "${TEAM_ID}" "${SYSEXT_BUNDLE_ID}" 2>/dev/null || {
+            log_warn "System Extension activation requested — user must approve in System Settings"
+            log_warn "Navigate to: System Settings → Privacy & Security → Security"
+        }
+    else
+        log_warn "systemextensionsctl not found — System Extension must be approved manually"
+    fi
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 5: Network Extension (DNS Proxy)
+# ────────────────────────────────────────────────────────────
+setup_network_extension() {
+    log_info "Network Extension (DNS Proxy) setup..."
+
+    # NEDNSProxyProvider requires user approval via system dialog
+    # The daemon will trigger this on first DNS proxy activation
+    log_info "DNS Proxy will prompt for approval on first use"
+    log_info "User will see: 'FocusMe would like to filter network content'"
+    log_info "Navigate to: System Settings → Network → Filters if needed"
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 6: Install NMH manifests for browsers
+# ────────────────────────────────────────────────────────────
+install_nmh_manifests() {
+    log_info "Installing Native Messaging Host manifests..."
+
+    # Generate the NMH manifest content with correct binary path
+    local nmh_json
+    nmh_json=$(cat <<EOF
+{
+  "name": "com.focusme.nmh",
+  "description": "FocusMe Native Messaging Host",
+  "path": "${NMH_BIN}",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://EXTENSION_ID_HERE/"
+  ],
+  "allowed_extensions": [
+    "focusme@focusme.com"
+  ]
+}
+EOF
+    )
+
+    # Install for each browser (create dirs if needed)
+    for dir in "${CHROME_NMH_DIR}" "${FIREFOX_NMH_DIR}" "${EDGE_NMH_DIR}"; do
+        mkdir -p "${dir}" 2>/dev/null || true
+        echo "${nmh_json}" > "${dir}/${NMH_MANIFEST}" 2>/dev/null || {
+            log_warn "Could not write NMH manifest to ${dir} — browser may not be installed"
+        }
+    done
+
+    log_info "NMH manifests installed for Chrome, Firefox, and Edge"
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 7: Create log directory
+# ────────────────────────────────────────────────────────────
+create_log_directory() {
+    log_info "Creating log directory..."
+
+    mkdir -p "${LOG_DIR}"
+    chmod 755 "${LOG_DIR}"
+    chown root:wheel "${LOG_DIR}"
+
+    log_info "Log directory created at ${LOG_DIR}"
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 8: Post-install instructions
+# ────────────────────────────────────────────────────────────
+print_instructions() {
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════╗"
+    echo "║           FocusMe Installation Complete                 ║"
+    echo "╠══════════════════════════════════════════════════════════╣"
+    echo "║                                                        ║"
+    echo "║  1. The FocusMe daemon is now running as a             ║"
+    echo "║     LaunchDaemon (starts automatically on boot).       ║"
+    echo "║                                                        ║"
+    echo "║  2. You may be prompted to allow the System Extension  ║"
+    echo "║     in System Settings → Privacy & Security.           ║"
+    echo "║                                                        ║"
+    echo "║  3. The DNS Proxy will request approval on first use.  ║"
+    echo "║                                                        ║"
+    echo "║  4. Install the FocusMe browser extension from the     ║"
+    echo "║     Chrome Web Store or Firefox Add-ons.               ║"
+    echo "║                                                        ║"
+    echo "║  Service commands:                                     ║"
+    echo "║    Status:  sudo launchctl list | grep focusme         ║"
+    echo "║    Logs:    cat /Library/Logs/FocusMe/daemon.log       ║"
+    echo "║                                                        ║"
+    echo "╚══════════════════════════════════════════════════════════╝"
+    echo ""
+}
+
+# ────────────────────────────────────────────────────────────
+# Main — execute all steps
+# ────────────────────────────────────────────────────────────
+main() {
+    log_info "Starting FocusMe post-installation..."
+
+    check_macos_version
+    set_permissions
+    install_launch_daemon
+    register_system_extension
+    setup_network_extension
+    install_nmh_manifests
+    create_log_directory
+    print_instructions
+
+    log_info "Post-installation completed successfully"
+    exit 0
+}
+
+main "$@"

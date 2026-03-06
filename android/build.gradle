@@ -1,0 +1,19 @@
+// Top-level build file for FocusMe Android
+// Module: Layer 4 — Mobile (Android)
+// Task: T-030
+
+plugins {
+    id 'com.android.application' version '8.2.2' apply false
+    id 'org.jetbrains.kotlin.android' version '1.9.22' apply false
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

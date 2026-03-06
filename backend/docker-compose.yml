@@ -1,0 +1,71 @@
+# ============================================================
+# FILE:        docker-compose.yml
+# MODULE:      Phase 5 — Cloud Backend > Infrastructure
+# TASK:        T-060
+# AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+# GENERATED:   Session 7
+# PURPOSE:     Local development environment — PostgreSQL + backend
+# ============================================================
+#
+# Usage:
+#   docker compose up -d          # Start services
+#   docker compose logs -f        # Follow logs
+#   docker compose down           # Stop services
+#   docker compose down -v        # Stop + remove volumes (DELETES DATA)
+#
+# The backend service requires Rust compilation. For local dev,
+# run the backend directly with `cargo run` and only use Docker
+# for PostgreSQL.
+
+version: "3.9"
+
+services:
+  # ── PostgreSQL 16 ─────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: focusme-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-focusme}
+      POSTGRES_USER: ${POSTGRES_USER:-focusme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-focusme_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-focusme}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend API (production build) ────────────────────────
+  # For local dev, run `cargo run` directly against the Postgres container.
+  # Uncomment to run the backend in Docker:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: focusme-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-focusme}:${POSTGRES_PASSWORD:-focusme_dev_password}@postgres:5432/${POSTGRES_DB:-focusme}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production_min_32_chars}
+      PORT: 8080
+      RUST_LOG: ${RUST_LOG:-focusme_backend=info,tower_http=info}
+      POSTHOG_API_KEY: ${POSTHOG_API_KEY:-}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  pgdata:
+    driver: local

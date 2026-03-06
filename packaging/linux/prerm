@@ -1,0 +1,210 @@
+#!/usr/bin/env bash
+# ============================================================
+# FILE:        prerm
+# MODULE:      Phase 4 — Packaging > Linux .deb pre-removal
+# TASK:        T-055
+# AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+# GENERATED:   Session 4
+# PURPOSE:     Pre-removal script for FocusMe .deb package.
+#              Stops daemon service, unloads eBPF programs,
+#              restores /etc/resolv.conf, removes FocusMe artifacts.
+# USAGE:       Automatically invoked by dpkg before package removal.
+# ============================================================
+
+set -euo pipefail
+
+# ═══════════════════════════════════════════════════════════════
+# Constants
+# ═══════════════════════════════════════════════════════════════
+
+readonly DAEMON_BIN="/usr/local/bin/focusme-daemon"
+readonly LOADER_BIN="/usr/local/bin/focusme-loader"
+readonly SERVICE_FILE="/etc/systemd/system/focusme.service"
+readonly UNBOUND_RPZ="/etc/unbound/focusme.rpz"
+readonly UNBOUND_CONF="/etc/unbound/unbound.conf.d/focusme-rpz.conf"
+readonly RESOLV_CONF="/etc/resolv.conf"
+readonly RESOLV_BACKUP="/etc/resolv.conf.focusme.bak"
+readonly BPF_PIN_DIR="/sys/fs/bpf/focusme"
+readonly HOSTS_FILE="/etc/hosts"
+readonly HOSTS_START_MARKER="# >>> FocusMe Managed Block List — DO NOT EDIT <<<"
+readonly HOSTS_END_MARKER="# >>> FocusMe End Block List <<<"
+readonly LOG_TAG="[FocusMe prerm]"
+
+# ═══════════════════════════════════════════════════════════════
+# Helpers
+# ═══════════════════════════════════════════════════════════════
+
+log_info()  { echo "${LOG_TAG} INFO:  $*"; }
+log_warn()  { echo "${LOG_TAG} WARN:  $*" >&2; }
+log_error() { echo "${LOG_TAG} ERROR: $*" >&2; }
+
+# ═══════════════════════════════════════════════════════════════
+# Step 1: Stop and disable systemd service
+# ═══════════════════════════════════════════════════════════════
+
+stop_service() {
+    log_info "Stopping FocusMe service..."
+
+    if systemctl is-active --quiet focusme 2>/dev/null; then
+        systemctl stop focusme || log_warn "Failed to stop service"
+        log_info "Service stopped."
+    else
+        log_info "Service is not running."
+    fi
+
+    if systemctl is-enabled --quiet focusme 2>/dev/null; then
+        systemctl disable focusme || log_warn "Failed to disable service"
+        log_info "Service disabled."
+    fi
+
+    systemctl daemon-reload 2>/dev/null || true
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Step 2: Unload eBPF LSM programs
+# ═══════════════════════════════════════════════════════════════
+
+unload_ebpf() {
+    log_info "Unloading eBPF programs..."
+
+    # Remove pinned BPF maps and programs
+    if [[ -d "${BPF_PIN_DIR}" ]]; then
+        # Unpin all programs and maps in the directory
+        find "${BPF_PIN_DIR}" -type f -delete 2>/dev/null || true
+        rmdir "${BPF_PIN_DIR}" 2>/dev/null || true
+        log_info "eBPF pin directory cleaned."
+    else
+        log_info "No pinned eBPF programs found."
+    fi
+
+    # If loader has an unload command, use it
+    if [[ -x "${LOADER_BIN}" ]]; then
+        "${LOADER_BIN}" --unload 2>/dev/null || log_info "Loader unload completed (or not needed)."
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Step 3: Restore /etc/resolv.conf
+# ═══════════════════════════════════════════════════════════════
+
+restore_resolv_conf() {
+    log_info "Restoring resolv.conf..."
+
+    if [[ -f "${RESOLV_BACKUP}" ]]; then
+        cp "${RESOLV_BACKUP}" "${RESOLV_CONF}"
+        rm -f "${RESOLV_BACKUP}"
+        log_info "resolv.conf restored from backup."
+    else
+        log_info "No resolv.conf backup found — nothing to restore."
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Step 4: Remove Unbound RPZ configuration
+# ═══════════════════════════════════════════════════════════════
+
+remove_unbound_config() {
+    log_info "Removing Unbound RPZ configuration..."
+
+    local changed=false
+
+    if [[ -f "${UNBOUND_RPZ}" ]]; then
+        rm -f "${UNBOUND_RPZ}"
+        changed=true
+        log_info "Removed RPZ zone file."
+    fi
+
+    if [[ -f "${UNBOUND_CONF}" ]]; then
+        rm -f "${UNBOUND_CONF}"
+        changed=true
+        log_info "Removed Unbound include config."
+    fi
+
+    # Reload Unbound to clear cached RPZ rules
+    if [[ "$changed" == "true" ]]; then
+        if systemctl is-active --quiet unbound 2>/dev/null; then
+            systemctl reload unbound 2>/dev/null || log_warn "Failed to reload Unbound"
+            log_info "Unbound reloaded."
+        fi
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Step 5: Remove FocusMe entries from /etc/hosts
+# ═══════════════════════════════════════════════════════════════
+
+clean_hosts_file() {
+    log_info "Cleaning /etc/hosts..."
+
+    if [[ ! -f "${HOSTS_FILE}" ]]; then
+        return 0
+    fi
+
+    # Check if our markers exist
+    if ! grep -qF "${HOSTS_START_MARKER}" "${HOSTS_FILE}" 2>/dev/null; then
+        log_info "No FocusMe entries in /etc/hosts."
+        return 0
+    fi
+
+    # Remove everything between our markers (inclusive)
+    local tmpfile
+    tmpfile=$(mktemp)
+
+    local inside_block=false
+    while IFS= read -r line; do
+        if [[ "$line" == *"${HOSTS_START_MARKER}"* ]]; then
+            inside_block=true
+            continue
+        fi
+        if [[ "$line" == *"${HOSTS_END_MARKER}"* ]]; then
+            inside_block=false
+            continue
+        fi
+        if [[ "$inside_block" == "false" ]]; then
+            echo "$line" >> "$tmpfile"
+        fi
+    done < "${HOSTS_FILE}"
+
+    mv "$tmpfile" "${HOSTS_FILE}"
+    chmod 644 "${HOSTS_FILE}"
+    chown root:root "${HOSTS_FILE}"
+
+    log_info "FocusMe entries removed from /etc/hosts."
+}
+
+# ═══════════════════════════════════════════════════════════════
+# Main — dpkg calls prerm with "remove" or "upgrade" argument
+# ═══════════════════════════════════════════════════════════════
+
+case "${1:-}" in
+    remove|purge)
+        log_info "FocusMe pre-removal starting (${1})..."
+
+        stop_service
+        unload_ebpf
+        restore_resolv_conf
+        remove_unbound_config
+        clean_hosts_file
+
+        log_info "FocusMe pre-removal complete."
+        echo ""
+        echo "FocusMe has been removed. Your DNS and browser settings"
+        echo "have been restored to their pre-installation state."
+        echo ""
+        ;;
+
+    upgrade|deconfigure)
+        log_info "Pre-removal for upgrade — stopping service only."
+        stop_service
+        ;;
+
+    failed-upgrade)
+        log_info "Pre-removal failed-upgrade — no action needed."
+        ;;
+
+    *)
+        log_info "Pre-removal called with unknown argument: ${1:-}"
+        ;;
+esac
+
+exit 0

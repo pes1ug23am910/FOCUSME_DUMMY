@@ -1,0 +1,530 @@
+# ============================================================
+# FILE:        ci.yml
+# MODULE:      CI/CD — Multi-Platform Build & Test
+# TASK:        T-004 (CI skeleton), Section 7.5
+# AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+# GENERATED:   Phase 0/4, CI/CD pipeline
+# DEPENDENCIES: GitHub Actions, Rust toolchain, Node.js 20, Android SDK 34
+# TEST COVERAGE: Runs all unit tests + integration tests per platform
+# ============================================================
+
+name: FocusMe CI
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  NODE_VERSION: "20"
+
+jobs:
+  # ================================================================
+  # Rust Daemon — Windows, macOS, Linux
+  # ================================================================
+  daemon:
+    name: Daemon (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        rust: [stable]
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: clippy, rustfmt
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            daemon/target
+          key: rust-${{ matrix.os }}-${{ hashFiles('daemon/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ matrix.os }}-
+
+      # Linux: install eBPF build dependencies
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang llvm libelf-dev \
+            linux-headers-$(uname -r) \
+            pkg-config libssl-dev
+
+      - name: Check formatting
+        working-directory: daemon
+        run: cargo fmt -- --check
+
+      - name: Clippy lint
+        working-directory: daemon
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build
+        working-directory: daemon
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Run unit tests
+        working-directory: daemon
+        run: cargo test --release
+
+      - name: Upload daemon artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daemon-${{ matrix.os }}
+          path: |
+            daemon/target/${{ matrix.target }}/release/focusme-daemon*
+          if-no-files-found: warn
+
+  # ================================================================
+  # Backend API — Rust / Axum / PostgreSQL
+  # ================================================================
+  backend:
+    name: Backend (Rust / Axum)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: focusme_test
+          POSTGRES_USER: focusme
+          POSTGRES_PASSWORD: test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - "5432:5432"
+
+    env:
+      DATABASE_URL: postgresql://focusme:test_password@localhost:5432/focusme_test
+      JWT_SECRET: test_jwt_secret_at_least_32_chars_long_for_ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - name: Check formatting
+        working-directory: backend
+        run: cargo fmt -- --check
+
+      - name: Clippy lint
+        working-directory: backend
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --features postgres --no-default-features
+
+      - name: Run database migrations
+        working-directory: backend
+        run: cargo sqlx migrate run
+
+      - name: Run tests
+        working-directory: backend
+        run: cargo test
+
+      - name: Security audit
+        working-directory: backend
+        run: cargo audit --deny warnings
+        continue-on-error: true
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-linux
+          path: backend/target/release/focusme-backend
+          if-no-files-found: warn
+
+  # ================================================================
+  # Browser Extension — Build & Test
+  # ================================================================
+  extension:
+    name: Browser Extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: extension/package-lock.json
+
+      - name: Install dependencies
+        working-directory: extension
+        run: npm ci
+
+      - name: Lint
+        working-directory: extension
+        run: npm run lint
+
+      - name: Type check
+        working-directory: extension
+        run: npm run typecheck
+
+      - name: Build MV3 (Chrome)
+        working-directory: extension
+        run: npm run build:mv3
+
+      - name: Build MV2 (Firefox)
+        working-directory: extension
+        run: npm run build:mv2
+
+      - name: Run tests
+        working-directory: extension
+        run: npm test
+
+      - name: Upload extension artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-builds
+          path: |
+            extension/dist-mv3/
+            extension/dist-mv2/
+
+  # ================================================================
+  # Native Messaging Host — Build alongside daemon
+  # ================================================================
+  native-host:
+    name: Native Messaging Host (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build native messaging host
+        working-directory: extension/native_messaging_host
+        run: cargo build --release
+
+      - name: Run tests
+        working-directory: extension/native_messaging_host
+        run: cargo test
+
+  # ================================================================
+  # Android App — Build & Test
+  # ================================================================
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Run unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest
+
+      - name: Lint
+        working-directory: android
+        run: ./gradlew lintDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+
+  # ================================================================
+  # Tauri UI Shell — Build & Test
+  # ================================================================
+  ui:
+    name: UI Shell (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Linux: Tauri requires additional system deps
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libappindicator3-dev librsvg2-dev \
+            patchelf
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Lint & Type check
+        working-directory: ui
+        run: |
+          npm run lint
+          npm run typecheck
+
+      - name: Build Tauri app
+        working-directory: ui
+        run: npm run tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_KEY }}
+
+      - name: Run UI tests
+        working-directory: ui
+        run: npm test
+
+  # ================================================================
+  # Security Audit
+  # ================================================================
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Audit Rust dependencies (daemon)
+        working-directory: daemon
+        run: cargo audit --deny warnings
+
+      - name: Audit Rust dependencies (NMH)
+        working-directory: extension/native_messaging_host
+        run: cargo audit --deny warnings
+
+      - name: Audit Rust dependencies (backend)
+        working-directory: backend
+        run: cargo audit --deny warnings
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Audit npm dependencies (extension)
+        working-directory: extension
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Audit npm dependencies (UI)
+        working-directory: ui
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Audit Gradle dependencies (Android)
+        working-directory: android
+        run: ./gradlew dependencies --write-locks
+        continue-on-error: true
+
+  # ================================================================
+  # Code Coverage — Daemon (cargo-tarpaulin)
+  # ================================================================
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: [daemon]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang llvm libelf-dev \
+            linux-headers-$(uname -r) \
+            pkg-config libssl-dev
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Run coverage
+        working-directory: daemon
+        run: cargo tarpaulin --out Xml --output-dir ../coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/cobertura.xml
+          flags: daemon
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ================================================================
+  # Release — Triggered on v* tags
+  # ================================================================
+  release:
+    name: Release (${{ matrix.os }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [daemon, extension, native-host, android, ui, backend, security]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: focusme-daemon.exe
+            asset_name: focusme-daemon-windows-x64.exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: focusme-daemon
+            asset_name: focusme-daemon-linux-x64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: focusme-daemon
+            asset_name: focusme-daemon-macos-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Linux: install build dependencies
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang llvm libelf-dev \
+            linux-headers-$(uname -r) \
+            pkg-config libssl-dev
+
+      - name: Build release binary
+        working-directory: daemon
+        run: cargo build --release --target ${{ matrix.target }}
+
+      # Windows: sign with EV certificate (when T-003 resolved)
+      - name: Sign binary (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo "TODO: Sign with EV certificate (BLOCKED T-003)"
+          # signtool sign /sha1 ${{ secrets.EV_CERT_THUMBPRINT }} /tr http://timestamp.digicert.com /td sha256 /fd sha256 daemon/target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+        continue-on-error: true
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: daemon/target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+
+  # ================================================================
+  # Create GitHub Release Draft — runs after all release builds
+  # ================================================================
+  publish-release:
+    name: Publish Release Draft
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: release-*
+
+      - name: Rename artifacts
+        run: |
+          mkdir -p dist
+          cp release-artifacts/release-windows-latest/focusme-daemon.exe dist/focusme-daemon-windows-x64.exe 2>/dev/null || true
+          cp release-artifacts/release-ubuntu-latest/focusme-daemon dist/focusme-daemon-linux-x64 2>/dev/null || true
+          cp release-artifacts/release-macos-latest/focusme-daemon dist/focusme-daemon-macos-x64 2>/dev/null || true
+
+      - name: Create GitHub Release (Draft)
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

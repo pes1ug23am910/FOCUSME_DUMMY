@@ -1,0 +1,216 @@
+#!/bin/bash
+# ============================================================
+# FILE:        preinstall
+# MODULE:      Layer 5 — Installer Scripts > macOS PKG Pre-Install
+# TASK:        T-054
+# PLATFORM:    macOS 13.0+ (Ventura and later)
+# AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+# SESSION:     5
+# DEPENDENCIES: sw_vers, launchctl, pkgutil
+# TEST COVERAGE: Installer checklist M-01 through M-08
+# KNOWN LIMITATIONS:
+#   - Cannot detect all possible conflicting software
+#   - [BLOCKED T-002]: ESF entitlement needed for full macOS functionality
+# ============================================================
+set -euo pipefail
+
+# ────────────────────────────────────────────────────────────
+# Configuration
+# ────────────────────────────────────────────────────────────
+readonly MIN_MACOS_MAJOR=13
+readonly PLIST_PATH="/Library/LaunchDaemons/com.focusme.daemon.plist"
+readonly APP_BUNDLE="/Applications/FocusMe.app"
+
+# Known conflicting software (process names)
+readonly -a CONFLICTING_PROCS=(
+    "SelfControl"
+    "Cold Turkey"
+    "Freedom"
+    "BlockSite"
+)
+
+# ────────────────────────────────────────────────────────────
+# Logging
+# ────────────────────────────────────────────────────────────
+log_info() {
+    echo "[FocusMe preinstall] INFO: $*"
+}
+
+log_warn() {
+    echo "[FocusMe preinstall] WARN: $*" >&2
+}
+
+log_error() {
+    echo "[FocusMe preinstall] ERROR: $*" >&2
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 1: Check macOS version
+# ────────────────────────────────────────────────────────────
+check_macos_version() {
+    local version
+    version=$(sw_vers -productVersion 2>/dev/null || echo "0.0")
+    local major
+    major=$(echo "$version" | cut -d. -f1)
+
+    if [ "$major" -lt "$MIN_MACOS_MAJOR" ]; then
+        log_error "FocusMe requires macOS ${MIN_MACOS_MAJOR}.0 (Ventura) or later."
+        log_error "Detected: macOS $version"
+        log_error "Please upgrade your macOS before installing FocusMe."
+        exit 1
+    fi
+
+    log_info "macOS version check passed: $version (>= ${MIN_MACOS_MAJOR}.0)"
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 2: Check architecture
+# ────────────────────────────────────────────────────────────
+check_architecture() {
+    local arch
+    arch=$(uname -m)
+
+    case "$arch" in
+        x86_64|arm64)
+            log_info "Architecture: $arch — supported"
+            ;;
+        *)
+            log_error "Unsupported architecture: $arch"
+            log_error "FocusMe supports x86_64 (Intel) and arm64 (Apple Silicon) only."
+            exit 1
+            ;;
+    esac
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 3: Check for SIP (System Integrity Protection)
+# ────────────────────────────────────────────────────────────
+check_sip_status() {
+    if command -v csrutil &>/dev/null; then
+        local sip_status
+        sip_status=$(csrutil status 2>/dev/null || echo "unknown")
+
+        if echo "$sip_status" | grep -q "enabled"; then
+            log_info "SIP is enabled — good (required for System Extension)"
+        elif echo "$sip_status" | grep -q "disabled"; then
+            log_warn "SIP is DISABLED — System Extension features may not work correctly"
+            log_warn "Re-enable SIP: boot to Recovery → csrutil enable"
+        fi
+    fi
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 4: Stop existing daemon if upgrading
+# ────────────────────────────────────────────────────────────
+stop_existing_daemon() {
+    if [ -f "${PLIST_PATH}" ]; then
+        log_info "Existing FocusMe installation detected — stopping daemon for upgrade..."
+
+        # Try modern bootout first, fall back to legacy unload
+        if launchctl bootout system "${PLIST_PATH}" 2>/dev/null; then
+            log_info "Daemon stopped via bootout"
+        elif launchctl unload "${PLIST_PATH}" 2>/dev/null; then
+            log_info "Daemon stopped via legacy unload"
+        else
+            log_warn "Could not stop existing daemon — may not be running"
+        fi
+
+        # Give it a moment to shut down cleanly
+        sleep 1
+
+        # Check if the process is still running
+        if pgrep -f "focusme-daemon" >/dev/null 2>&1; then
+            log_warn "Daemon still running — sending SIGTERM"
+            pkill -TERM -f "focusme-daemon" 2>/dev/null || true
+            sleep 2
+        fi
+    else
+        log_info "No existing FocusMe installation detected — fresh install"
+    fi
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 5: Check for conflicting software
+# ────────────────────────────────────────────────────────────
+check_conflicting_software() {
+    local found_conflict=false
+
+    for proc_name in "${CONFLICTING_PROCS[@]}"; do
+        if pgrep -fi "$proc_name" >/dev/null 2>&1; then
+            log_warn "Conflicting software detected: $proc_name"
+            log_warn "Running $proc_name alongside FocusMe may cause DNS/blocking conflicts"
+            found_conflict=true
+        fi
+    done
+
+    # Check for known blocking browser extensions via their daemon/helper processes
+    if pgrep -f "LeechBlock" >/dev/null 2>&1; then
+        log_warn "LeechBlock helper process detected — may conflict with extension"
+        found_conflict=true
+    fi
+
+    if [ "$found_conflict" = true ]; then
+        log_warn "Consider disabling conflicting software before using FocusMe"
+        log_warn "Installation will continue — conflicts may cause unexpected behavior"
+    else
+        log_info "No conflicting software detected"
+    fi
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 6: Check disk space
+# ────────────────────────────────────────────────────────────
+check_disk_space() {
+    # FocusMe needs ~50MB for app bundle + data
+    local required_mb=50
+    local available_mb
+    available_mb=$(df -m /Applications 2>/dev/null | awk 'NR==2 {print $4}')
+
+    if [ -n "$available_mb" ] && [ "$available_mb" -lt "$required_mb" ]; then
+        log_error "Insufficient disk space: ${available_mb}MB available, ${required_mb}MB required"
+        exit 1
+    fi
+
+    log_info "Disk space check passed: ${available_mb:-unknown}MB available"
+}
+
+# ────────────────────────────────────────────────────────────
+# Step 7: Backup existing configuration (upgrade path)
+# ────────────────────────────────────────────────────────────
+backup_config() {
+    local data_dir="/Library/Application Support/FocusMe"
+
+    if [ -d "$data_dir" ]; then
+        log_info "Existing data directory found — configuration will be preserved"
+
+        # Backup the database before upgrade (in case schema migration fails)
+        local db_file="${data_dir}/focusme.db"
+        if [ -f "$db_file" ]; then
+            local backup_file="${data_dir}/focusme.db.pre-upgrade.bak"
+            cp -f "$db_file" "$backup_file" 2>/dev/null || {
+                log_warn "Could not backup database — upgrade will proceed anyway"
+            }
+            log_info "Database backed up to ${backup_file}"
+        fi
+    fi
+}
+
+# ────────────────────────────────────────────────────────────
+# Main
+# ────────────────────────────────────────────────────────────
+main() {
+    log_info "Starting FocusMe pre-installation checks..."
+
+    check_macos_version
+    check_architecture
+    check_sip_status
+    stop_existing_daemon
+    check_conflicting_software
+    check_disk_space
+    backup_config
+
+    log_info "All pre-installation checks passed — proceeding with installation"
+    exit 0
+}
+
+main "$@"

@@ -1,0 +1,1245 @@
+# ============================================================
+# FILE:        openapi.yml
+# MODULE:      Phase 5 — Cloud Backend > API Specification
+# TASK:        T-060 (Session 8 hardening)
+# PLATFORM:    linux (server)
+# AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+# GENERATED:   Session 8
+# PURPOSE:     OpenAPI 3.1 spec for all 14 backend endpoints
+# ============================================================
+
+openapi: 3.1.0
+
+info:
+  title: FocusMe Cloud API
+  version: 1.0.0
+  description: |
+    Cloud backend API for FocusMe — provides user authentication,
+    cross-device plan synchronization, and family dashboard features.
+
+    ## Authentication
+
+    Most endpoints require a Bearer JWT access token in the
+    `Authorization` header. Obtain tokens via `/auth/login` or
+    `/auth/register`. Access tokens expire after 15 minutes;
+    use `/auth/refresh` to rotate.
+
+    ## Rate Limiting
+
+    - Auth routes: **10 requests/minute** per IP
+    - All other routes: **100 requests/minute** per IP
+    - Exceeded → `429 Too Many Requests` with `Retry-After` header
+  contact:
+    name: FocusMe Engineering
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.focusme.app/api/v1
+    description: Production
+  - url: http://localhost:8080/api/v1
+    description: Development
+
+# ── Security Schemes ──────────────────────────────────────────
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        JWT access token obtained from /auth/login or /auth/register.
+        Include as `Authorization: Bearer <token>`.
+
+  # ── Reusable Schemas ──────────────────────────────────────
+
+  schemas:
+    # ── Error ───────────────────────────────────────────────
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code constant for programmatic handling
+          example: "AUTH_INVALID_CREDENTIALS"
+          enum:
+            - AUTH_INVALID_CREDENTIALS
+            - AUTH_EMAIL_EXISTS
+            - AUTH_TOKEN_EXPIRED
+            - AUTH_TOKEN_INVALID
+            - AUTH_REFRESH_REUSE
+            - SYNC_VERSION_CONFLICT
+            - SYNC_PLAN_NOT_FOUND
+            - FAMILY_INVITE_EXPIRED
+            - FAMILY_ALREADY_MEMBER
+            - VALIDATION_FAILED
+            - RATE_LIMIT_EXCEEDED
+            - FORBIDDEN
+            - NOT_FOUND
+            - INTERNAL_ERROR
+        message:
+          type: string
+          description: Human-readable error message (do not match on this — use code instead)
+          example: "Authentication failed: invalid credentials"
+        details:
+          type: object
+          description: Optional structured error context (e.g., field-level validation errors)
+
+    # ── Health ──────────────────────────────────────────────
+    HealthResponse:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          example: "ok"
+        version:
+          type: string
+          example: "0.1.0"
+
+    ReadinessResponse:
+      type: object
+      required: [status, db, uptime_seconds]
+      properties:
+        status:
+          type: string
+          enum: ["ready", "degraded"]
+          description: Overall service status
+          example: "ready"
+        db:
+          type: string
+          enum: ["up", "down"]
+          description: Database connectivity status
+          example: "up"
+        uptime_seconds:
+          type: integer
+          description: Server uptime in seconds
+          example: 3600
+
+    VersionResponse:
+      type: object
+      required: [version, git_sha, build_timestamp]
+      properties:
+        version:
+          type: string
+          description: Crate version from Cargo.toml
+          example: "0.1.0"
+        git_sha:
+          type: string
+          description: Git commit SHA (or "unknown" if not set at build time)
+          example: "abc1234def5678"
+        build_timestamp:
+          type: string
+          description: Build timestamp (or "unknown" if not set at build time)
+          example: "2026-03-05T12:00:00Z"
+
+    # ── Auth ────────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: "SecureP@ss123"
+        display_name:
+          type: string
+          example: "Jane Doe"
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: "user@example.com"
+        password:
+          type: string
+          format: password
+          example: "SecureP@ss123"
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          description: The refresh token from a previous login or refresh
+          example: "eyJhbGciOiJIUzI1NiJ9..."
+
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: JWT access token (15 min TTL)
+          example: "eyJhbGciOiJIUzI1NiJ9..."
+        refresh_token:
+          type: string
+          description: JWT refresh token (30 day TTL)
+          example: "eyJhbGciOiJIUzI1NiJ9..."
+        token_type:
+          type: string
+          enum: [Bearer]
+          example: "Bearer"
+        expires_in:
+          type: integer
+          description: Access token lifetime in seconds
+          example: 900
+
+    AuthResponse:
+      type: object
+      required: [user, access_token, refresh_token, token_type, expires_in]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+
+    User:
+      type: object
+      required: [id, email, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Plans ───────────────────────────────────────────────
+    UpsertPlanRequest:
+      type: object
+      required: [local_id, plan_json]
+      properties:
+        local_id:
+          type: string
+          description: Client-side plan identifier
+          example: "plan_abc123"
+        plan_json:
+          type: object
+          description: Full plan object (JSONB — schema-flexible)
+          example:
+            name: "Work Focus"
+            rules:
+              - type: "url"
+                match_type: "domain"
+                value: "reddit.com"
+        expected_version:
+          type: integer
+          description: Expected server version for optimistic locking
+          example: 3
+
+    Plan:
+      type: object
+      required: [id, user_id, local_id, plan_json, version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        local_id:
+          type: string
+        plan_json:
+          type: object
+        version:
+          type: integer
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # ── Sync ────────────────────────────────────────────────
+    PushSyncRequest:
+      type: object
+      required: [device_id, events]
+      properties:
+        device_id:
+          type: string
+          description: The sending device's identifier
+          example: "device_xyz789"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncEventInput"
+
+    SyncEventInput:
+      type: object
+      required: [event_type, payload]
+      properties:
+        event_type:
+          type: string
+          description: Event classification
+          example: "plan_created"
+        payload:
+          type: object
+          description: Event-specific data
+
+    PushSyncResponse:
+      type: object
+      required: [processed, server_time]
+      properties:
+        processed:
+          type: integer
+          description: Number of events successfully processed
+          example: 5
+        server_time:
+          type: string
+          format: date-time
+
+    PullSyncResponse:
+      type: object
+      required: [plans, events, server_time]
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: "#/components/schemas/Plan"
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              event_type:
+                type: string
+              payload:
+                type: object
+              created_at:
+                type: string
+                format: date-time
+        server_time:
+          type: string
+          format: date-time
+
+    # ── Family ──────────────────────────────────────────────
+    CreateFamilyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Family group display name
+          example: "Smith Family"
+
+    FamilyGroup:
+      type: object
+      required: [id, name, owner_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        owner_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    FamilyMember:
+      type: object
+      required: [id, user_id, role, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+        status:
+          type: string
+          enum: [pending, accepted]
+
+    InviteRequest:
+      type: object
+      required: [email, group_id]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email of the user to invite
+          example: "family@example.com"
+        group_id:
+          type: string
+          format: uuid
+
+    AcceptInviteRequest:
+      type: object
+      required: [invite_token]
+      properties:
+        invite_token:
+          type: string
+          format: uuid
+          description: Token from the invite
+
+    InviteResponse:
+      type: object
+      required: [invite_token, expires_at]
+      properties:
+        invite_token:
+          type: string
+          format: uuid
+        expires_at:
+          type: string
+          format: date-time
+
+    SharePlanRequest:
+      type: object
+      required: [group_id]
+      properties:
+        group_id:
+          type: string
+          format: uuid
+
+    DashboardResponse:
+      type: object
+      required: [group, members, shared_plans, member_count]
+      properties:
+        group:
+          $ref: "#/components/schemas/FamilyGroup"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/FamilyMember"
+        shared_plans:
+          type: array
+          items:
+            $ref: "#/components/schemas/Plan"
+        member_count:
+          type: integer
+          example: 4
+
+# ── Paths ──────────────────────────────────────────────────────
+
+paths:
+  # ── Health ───────────────────────────────────────────────────
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Health check endpoint
+      description: Returns server status and version. Used by Docker HEALTHCHECK and load balancers.
+      tags: [Health]
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: "ok"
+                version: "0.1.0"
+
+  /health/ready:
+    get:
+      operationId: readinessCheck
+      summary: Readiness probe
+      description: |
+        Checks database connectivity via `SELECT 1`. Returns 200 if the service
+        is ready to accept traffic, 503 if degraded (e.g., database unreachable).
+        Used by Kubernetes readiness probes and load balancers.
+      tags: [Health]
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+              example:
+                status: "ready"
+                db: "up"
+                uptime_seconds: 3600
+        "503":
+          description: Service is degraded (database unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+              example:
+                status: "degraded"
+                db: "down"
+                uptime_seconds: 3600
+
+  /health/version:
+    get:
+      operationId: versionInfo
+      summary: Build version information
+      description: |
+        Returns the application version, git commit SHA, and build timestamp.
+        Git SHA and build timestamp require build-time environment variables
+        (VERGEN_GIT_SHA, VERGEN_BUILD_TIMESTAMP). Falls back to "unknown".
+      tags: [Health]
+      responses:
+        "200":
+          description: Build version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+              example:
+                version: "0.1.0"
+                git_sha: "abc1234def5678"
+                build_timestamp: "2026-03-05T12:00:00Z"
+
+  # ── Authentication ───────────────────────────────────────────
+  /auth/register:
+    post:
+      operationId: registerUser
+      summary: Create a new user account
+      description: |
+        Registers a new user with email and password. Password is hashed
+        with Argon2id (m=64MiB, t=3, p=4). Returns user object and JWT
+        token pair.
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Validation error (invalid email, password too short)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Validation error: password must be at least 8 characters"
+                code: 400
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Conflict: email already registered"
+                code: 409
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              description: Seconds until the next request is allowed
+              schema:
+                type: integer
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/login:
+    post:
+      operationId: loginUser
+      summary: Authenticate and receive JWT token pair
+      description: |
+        Validates email/password against stored Argon2id hash. Returns
+        access token (15 min) and refresh token (30 days).
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Authentication failed: invalid credentials"
+                code: 401
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/refresh:
+    post:
+      operationId: refreshToken
+      summary: Rotate refresh token and get new token pair
+      description: |
+        Validates the refresh token, revokes it, and issues a new
+        access/refresh pair. If a revoked token is resubmitted (reuse
+        detection), ALL refresh tokens for the user are revoked, forcing
+        re-authentication on all devices.
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Token pair refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "401":
+          description: Invalid or revoked refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Authentication failed: refresh token revoked — possible token theft"
+                code: 401
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── Plans ────────────────────────────────────────────────────
+  /plans:
+    get:
+      operationId: listPlans
+      summary: List user's plans with optional delta sync
+      description: |
+        Returns all plans for the authenticated user. If `since` query
+        parameter is provided, only returns plans modified after that
+        timestamp (delta sync). Includes soft-deleted plans so clients
+        can sync deletions.
+      tags: [Plans]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: ISO 8601 timestamp for delta sync
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Plans retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plan"
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+    post:
+      operationId: upsertPlan
+      summary: Create or update a plan
+      description: |
+        Creates a new plan or updates an existing one (matched by `local_id`).
+        If `expected_version` is provided and doesn't match the server's
+        current version, returns 409 Conflict with the server's data.
+      tags: [Plans]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertPlanRequest"
+      responses:
+        "201":
+          description: Plan created or updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Version conflict — server has newer data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+  /plans/{local_id}:
+    delete:
+      operationId: deletePlan
+      summary: Soft-delete a plan
+      description: |
+        Marks a plan as deleted (sets `deleted_at`). The plan is not
+        physically removed so other devices can sync the deletion.
+      tags: [Plans]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: local_id
+          in: path
+          required: true
+          description: Client-side plan identifier
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Plan soft-deleted successfully
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Plan not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+  # ── Sync ─────────────────────────────────────────────────────
+  /sync/push:
+    post:
+      operationId: pushSync
+      summary: Batch push local changes to the server
+      description: |
+        Sends a batch of local change events to the server. Events are
+        stored for other devices to pull. Returns the number of events
+        processed and the current server time.
+      tags: [Sync]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushSyncRequest"
+      responses:
+        "200":
+          description: Events processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushSyncResponse"
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /sync/pull:
+    get:
+      operationId: pullSync
+      summary: Pull changes since last sync
+      description: |
+        Returns all plans and sync events modified/created after the
+        `since` timestamp. If `since` is omitted, returns all data
+        (full sync). Includes `server_time` for the client to use
+        as the next `since` value.
+      tags: [Sync]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: ISO 8601 timestamp — only return changes after this time
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Sync data retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PullSyncResponse"
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+  # ── Family ───────────────────────────────────────────────────
+  /family:
+    post:
+      operationId: createFamily
+      summary: Create a new family group
+      description: |
+        Creates a family group with the authenticated user as owner.
+        The owner is automatically added as a member with `accepted` status.
+      tags: [Family]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFamilyRequest"
+      responses:
+        "201":
+          description: Family group created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FamilyGroup"
+        "400":
+          description: Validation error (empty name)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Validation error: family name cannot be empty"
+                code: 400
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+    get:
+      operationId: listFamilies
+      summary: List user's family groups
+      description: Returns all family groups the authenticated user belongs to.
+      tags: [Family]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Family groups retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FamilyGroup"
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+  /family/members:
+    get:
+      operationId: listFamilyMembers
+      summary: List all family members across groups
+      description: Returns members of all family groups the user belongs to.
+      tags: [Family]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Members retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FamilyMember"
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+  /family/invite:
+    post:
+      operationId: inviteFamilyMember
+      summary: Invite a user to a family group
+      description: |
+        Creates a pending invitation with a UUID token that expires
+        after 7 days. Only the group owner can send invites.
+      tags: [Family]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteRequest"
+      responses:
+        "200":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteResponse"
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Only the group owner can invite members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Forbidden: only the group owner can invite members"
+                code: 403
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+  /family/invite/accept:
+    post:
+      operationId: acceptInvite
+      summary: Accept a family group invite
+      description: |
+        Validates the invite token (must not be expired), marks the
+        membership as `accepted`, and clears the invite token.
+      tags: [Family]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteRequest"
+      responses:
+        "200":
+          description: Invite accepted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Invite accepted"
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Invalid or expired invite token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+  /family/plans/share/{plan_id}:
+    post:
+      operationId: sharePlan
+      summary: Share a plan with a family group
+      description: |
+        Creates a shared copy of the specified plan for the given family group.
+        The plan is copied, not referenced, to avoid cross-user conflicts.
+      tags: [Family]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: plan_id
+          in: path
+          required: true
+          description: UUID of the plan to share
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SharePlanRequest"
+      responses:
+        "200":
+          description: Plan shared successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Plan shared with family group"
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Plan or family group not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+  /family/dashboard:
+    get:
+      operationId: familyDashboard
+      summary: Family activity summary dashboard
+      description: |
+        Returns an aggregate view of the user's primary family group,
+        including all members, shared plans, and member count.
+      tags: [Family]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Dashboard data retrieved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardResponse"
+        "401":
+          description: Missing or invalid access token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User is not a member of any family group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Not found: user is not a member of any family group"
+                code: 404
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+
+# ── Tags ──────────────────────────────────────────────────────
+
+tags:
+  - name: Health
+    description: Server health and status
+  - name: Authentication
+    description: User registration, login, and token management
+  - name: Plans
+    description: Blocking plan CRUD with delta sync
+  - name: Sync
+    description: Cross-device push/pull synchronization
+  - name: Family
+    description: Family groups, invites, and dashboard

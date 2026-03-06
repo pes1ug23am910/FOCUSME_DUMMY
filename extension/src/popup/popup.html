@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=320, initial-scale=1.0">
+  <title>FocusMe</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <img src="../icons/icon-48.png" alt="FocusMe" class="logo" width="24" height="24">
+      <h1>FocusMe</h1>
+    </header>
+
+    <section id="status-section" class="section">
+      <div class="status-row">
+        <span class="status-label">Daemon</span>
+        <span id="daemon-status" class="status-badge status-disconnected">Disconnected</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Active Rules</span>
+        <span id="rule-count" class="status-value">0</span>
+      </div>
+      <div class="status-row">
+        <span class="status-label">Forced Mode</span>
+        <span id="forced-mode" class="status-badge status-inactive">Inactive</span>
+      </div>
+    </section>
+
+    <section id="sync-section" class="section">
+      <p class="sync-text">Last sync: <span id="last-sync">Never</span></p>
+      <button id="sync-btn" class="btn btn-primary">Sync Now</button>
+    </section>
+
+    <footer class="popup-footer">
+      <a id="open-dashboard" href="#" class="footer-link">Open Dashboard</a>
+      <span class="version">v0.1.0</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

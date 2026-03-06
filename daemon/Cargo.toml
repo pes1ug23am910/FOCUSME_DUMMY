@@ -1,0 +1,96 @@
+[package]
+name = "focusme-daemon"
+version = "0.1.0"
+edition = "2021"
+authors = ["FocusMe Engineering Team"]
+description = "FocusMe system-level enforcement daemon — blocks apps and URLs by schedule, quota, and lockdown mode"
+license = "Proprietary"
+rust-version = "1.75"
+
+[[bin]]
+name = "focusme-daemon"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rmp-serde = "1.1"          # MessagePack serialization
+
+# Database
+rusqlite = { version = "0.31", features = ["bundled-sqlcipher", "backup"] }
+refinery = { version = "0.8", features = ["rusqlite"] }
+
+# Cryptography
+argon2 = "0.5"              # Password hashing (Argon2id)
+sha2 = "0.10"               # SHA-256 for subject hashing
+hmac = "0.12"               # HMAC-SHA256 for pseudonymization
+ed25519-dalek = "2.1"       # Ed25519 signature verification (updates)
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.8"           # IANA timezone support
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+tracing-appender = "0.2"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# IPC
+interprocess = "2.0"        # Named Pipe (Win) / UDS (Unix)
+
+# Configuration
+toml = "0.8"
+dirs = "5.0"                # Platform-specific directories
+
+# Random number generation
+rand = "0.8"
+
+# JSON Schema validation
+jsonschema = "0.18"
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.7"
+windows-sys = { version = "0.52", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_Security",
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
+    "Win32_System_IO",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Services",
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libbpf-rs = "0.23"          # eBPF loader
+nix = { version = "0.28", features = ["fs", "signal", "process"] }
+
+[dev-dependencies]
+tempfile = "3.9"
+criterion = { version = "0.5", features = ["html_reports"] }
+mockall = "0.12"
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[[bench]]
+name = "sqlite_bench"
+harness = false

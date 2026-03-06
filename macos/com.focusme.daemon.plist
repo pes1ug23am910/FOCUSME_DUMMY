@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ============================================================
+  FILE:        com.focusme.daemon.plist
+  MODULE:      Layer 1 — Enforcement Engine > macOS LaunchDaemon
+  TASK:        T-014
+  PLATFORM:    macos
+  AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+  GENERATED:   Phase 1, macOS service persistence
+  DEPENDENCIES: macOS 13+ (Ventura) for SMAppService; 12+ for legacy
+  TEST COVERAGE: IT-02 (daemon restarts within 5s)
+  KNOWN LIMITATIONS: Admin can manually unload via launchctl.
+                     SIP does not protect /Library/LaunchDaemons.
+  ANTI-CIRCUMVENTION: KeepAlive=true ensures restart within 2 seconds.
+  ============================================================
+-->
+<plist version="1.0">
+<dict>
+    <!-- Service identifier -->
+    <key>Label</key>
+    <string>com.focusme.daemon</string>
+
+    <!-- Executable path -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Library/Application Support/FocusMe/FocusMeESF</string>
+    </array>
+
+    <!-- Run at system startup (before user login) -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Keep alive — restart on crash within 2 seconds -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Restart throttle — minimum 2 seconds between restarts -->
+    <key>ThrottleInterval</key>
+    <integer>2</integer>
+
+    <!-- Run as root for system-level enforcement -->
+    <key>UserName</key>
+    <string>root</string>
+
+    <!-- Working directory -->
+    <key>WorkingDirectory</key>
+    <string>/Library/Application Support/FocusMe</string>
+
+    <!-- Standard output and error logging -->
+    <key>StandardOutPath</key>
+    <string>/Library/Logs/FocusMe/daemon_stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Library/Logs/FocusMe/daemon_stderr.log</string>
+
+    <!-- Environment variables -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>FOCUSME_LOG_LEVEL</key>
+        <string>INFO</string>
+        <key>FOCUSME_DATA_DIR</key>
+        <string>/Library/Application Support/FocusMe</string>
+    </dict>
+
+    <!-- Process type — standard daemon -->
+    <key>ProcessType</key>
+    <string>Standard</string>
+
+    <!-- Allow loading when System Integrity Protection (SIP) is enabled -->
+    <key>EnablePressuredExit</key>
+    <false/>
+</dict>
+</plist>

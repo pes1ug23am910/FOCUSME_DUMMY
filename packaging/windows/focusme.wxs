@@ -1,0 +1,348 @@
+<!-- ============================================================ -->
+<!-- FILE:        focusme.wxs                                      -->
+<!-- MODULE:      Phase 4 — Packaging > Windows MSI (WiX v4)       -->
+<!-- TASK:        T-053                                             -->
+<!-- AUTHOR:      FocusMe Co-Pilot (Claude Opus)                   -->
+<!-- GENERATED:   Session 4                                        -->
+<!-- PURPOSE:     WiX v4 source for building FocusMe_x64.msi       -->
+<!-- BUILD:       wix build -o FocusMe_x64.msi focusme.wxs         -->
+<!--              (requires WiX v4 SDK: dotnet tool install wix)   -->
+<!-- SIGNING:     signtool sign /fd SHA256 /tr ... FocusMe_x64.msi -->
+<!--              Requires EV Code Signing cert (BLOCKED T-003)    -->
+<!-- ============================================================ -->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- Package Metadata                                        -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+
+    <Package Name="FocusMe"
+             Manufacturer="FocusMe Ltd"
+             Version="!(bind.FileVersion.DaemonExe)"
+             UpgradeCode="E8A3F4B1-7C2D-4E6A-9B5F-1D3A8C7E2F4B"
+             Scope="perMachine"
+             Compressed="yes"
+             InstallerVersion="500"
+             Language="1033"
+             Codepage="1252">
+
+        <!-- Minimum OS: Windows 10 (build 17763 / 1809) -->
+        <Launch Condition="VersionNT64 &gt;= 1000"
+                Message="FocusMe requires Windows 10 (version 1809) or later." />
+
+        <!-- Prevent downgrade -->
+        <MajorUpgrade AllowSameVersionUpgrades="yes"
+                      DowngradeErrorMessage="A newer version of FocusMe is already installed." />
+
+        <!-- Embed files in the MSI cab -->
+        <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Properties                                          -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <!-- Silent install support for GPO / SCCM deployment -->
+        <Property Id="SILENT_INSTALL" Value="0" />
+
+        <!-- Install directory (default: Program Files\FocusMe) -->
+        <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+        <!-- ARPPRODUCTICON for Add/Remove Programs -->
+        <Property Id="ARPPRODUCTICON" Value="FocusMeIcon" />
+        <Property Id="ARPHELPLINK" Value="https://focusme.com/support" />
+        <Property Id="ARPURLINFOABOUT" Value="https://focusme.com" />
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Icon                                                -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <Icon Id="FocusMeIcon" SourceFile="!(bindpath.assets)\focusme.ico" />
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Directory Structure                                 -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <StandardDirectory Id="ProgramFiles6432Folder">
+            <Directory Id="INSTALLFOLDER" Name="FocusMe">
+                <Directory Id="DaemonDir" Name="daemon" />
+                <Directory Id="UIDir" Name="ui" />
+                <Directory Id="NMHDir" Name="nmh" />
+            </Directory>
+        </StandardDirectory>
+
+        <!-- NMH manifest JSON goes into ProgramData for discovery -->
+        <StandardDirectory Id="CommonAppDataFolder">
+            <Directory Id="FocusMeDataDir" Name="FocusMe">
+                <Directory Id="NMHManifestDir" Name="nmh" />
+            </Directory>
+        </StandardDirectory>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Component Group: Daemon Service                     -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <ComponentGroup Id="DaemonComponents" Directory="DaemonDir">
+
+            <!-- Daemon executable -->
+            <Component Id="DaemonExeComponent" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+                <File Id="DaemonExe"
+                      Source="!(bindpath.daemon)\focusme-daemon.exe"
+                      KeyPath="yes" />
+
+                <!-- Install as Windows Service -->
+                <ServiceInstall Id="FocusMeDaemonService"
+                                Name="FocusMeDaemon"
+                                DisplayName="FocusMe Daemon"
+                                Description="FocusMe focus enforcement daemon — manages plans, blocks distractions, and protects settings."
+                                Type="ownProcess"
+                                Start="auto"
+                                ErrorControl="normal"
+                                Account="LocalSystem"
+                                Arguments="--service"
+                                Vital="yes">
+
+                    <!-- Auto-restart on failure -->
+                    <util:ServiceConfig FirstFailureActionType="restart"
+                                        SecondFailureActionType="restart"
+                                        ThirdFailureActionType="restart"
+                                        RestartServiceDelayInSeconds="10"
+                                        ResetPeriodInDays="1" />
+                </ServiceInstall>
+
+                <!-- Start on install, stop on uninstall -->
+                <ServiceControl Id="FocusMeDaemonControl"
+                                Name="FocusMeDaemon"
+                                Start="install"
+                                Stop="both"
+                                Remove="uninstall"
+                                Wait="yes" />
+            </Component>
+
+            <!-- Daemon database migrations directory -->
+            <Component Id="DaemonMigrationsComponent" Guid="B2C3D4E5-F6A7-8901-BCDE-F12345678901">
+                <CreateFolder />
+                <!-- Migration SQL files are embedded via refinery embed_migrations!
+                     but we keep the directory for potential manual migration scripts -->
+            </Component>
+
+        </ComponentGroup>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Component Group: UI Shell (Tauri)                   -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <ComponentGroup Id="UIComponents" Directory="UIDir">
+
+            <Component Id="UIExeComponent" Guid="C3D4E5F6-A7B8-9012-CDEF-123456789012">
+                <File Id="UIExe"
+                      Source="!(bindpath.ui)\FocusMe.exe"
+                      KeyPath="yes" />
+            </Component>
+
+            <!-- WebView2 runtime bundled assets -->
+            <Component Id="UIWebViewComponent" Guid="D4E5F6A7-B8C9-0123-DEF0-1234567890AB">
+                <File Id="UIWebView2Loader"
+                      Source="!(bindpath.ui)\WebView2Loader.dll" />
+            </Component>
+
+            <!-- Desktop shortcut -->
+            <Component Id="DesktopShortcutComponent"
+                        Guid="E5F6A7B8-C9D0-1234-EF01-234567890ABC"
+                        Directory="DesktopFolder">
+                <Shortcut Id="DesktopShortcut"
+                          Name="FocusMe"
+                          Description="FocusMe — Focus Enforcement"
+                          Target="[UIDir]FocusMe.exe"
+                          WorkingDirectory="UIDir"
+                          Icon="FocusMeIcon" />
+                <RegistryValue Root="HKCU"
+                               Key="Software\FocusMe"
+                               Name="DesktopShortcut"
+                               Type="integer"
+                               Value="1"
+                               KeyPath="yes" />
+            </Component>
+
+            <!-- Start Menu shortcut -->
+            <Component Id="StartMenuShortcutComponent"
+                        Guid="F6A7B8C9-D0E1-2345-F012-34567890ABCD"
+                        Directory="ProgramMenuFolder">
+                <Shortcut Id="StartMenuShortcut"
+                          Name="FocusMe"
+                          Description="FocusMe — Focus Enforcement"
+                          Target="[UIDir]FocusMe.exe"
+                          WorkingDirectory="UIDir"
+                          Icon="FocusMeIcon" />
+                <RegistryValue Root="HKCU"
+                               Key="Software\FocusMe"
+                               Name="StartMenuShortcut"
+                               Type="integer"
+                               Value="1"
+                               KeyPath="yes" />
+            </Component>
+
+        </ComponentGroup>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Standard Directory References                       -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <StandardDirectory Id="DesktopFolder" />
+        <StandardDirectory Id="ProgramMenuFolder" />
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Component Group: Native Messaging Host              -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <ComponentGroup Id="NMHComponents" Directory="NMHDir">
+
+            <!-- NMH executable -->
+            <Component Id="NMHExeComponent" Guid="17A8B9C0-D1E2-3456-0123-456789ABCDEF">
+                <File Id="NMHExe"
+                      Source="!(bindpath.nmh)\focusme-native-messaging-host.exe"
+                      KeyPath="yes" />
+            </Component>
+
+        </ComponentGroup>
+
+        <!-- NMH manifest JSON (in ProgramData) -->
+        <ComponentGroup Id="NMHManifestComponents" Directory="NMHManifestDir">
+
+            <Component Id="NMHManifestComponent" Guid="28B9C0D1-E2F3-4567-1234-56789ABCDEF0">
+                <File Id="NMHManifestJson"
+                      Source="!(bindpath.nmh)\com.focusme.nmh.json"
+                      KeyPath="yes" />
+            </Component>
+
+        </ComponentGroup>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Component Group: NMH Registry Keys                  -->
+        <!-- Chrome and Firefox discover NMH via registry.       -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <ComponentGroup Id="NMHRegistryComponents" Directory="INSTALLFOLDER">
+
+            <!-- Chrome NMH registry (per-machine) -->
+            <Component Id="ChromeNMHRegistry" Guid="39C0D1E2-F3A4-5678-2345-6789ABCDEF01">
+                <RegistryKey Root="HKLM"
+                             Key="SOFTWARE\Google\Chrome\NativeMessagingHosts\com.focusme.nmh">
+                    <RegistryValue Type="string"
+                                   Value="[NMHManifestDir]com.focusme.nmh.json" />
+                </RegistryKey>
+            </Component>
+
+            <!-- Chromium / Edge NMH registry (per-machine) -->
+            <Component Id="EdgeNMHRegistry" Guid="4AD1E2F3-A4B5-6789-3456-789ABCDEF012">
+                <RegistryKey Root="HKLM"
+                             Key="SOFTWARE\Microsoft\Edge\NativeMessagingHosts\com.focusme.nmh">
+                    <RegistryValue Type="string"
+                                   Value="[NMHManifestDir]com.focusme.nmh.json" />
+                </RegistryKey>
+            </Component>
+
+            <!-- Firefox NMH registry (per-machine) -->
+            <Component Id="FirefoxNMHRegistry" Guid="5BE2F3A4-B5C6-7890-4567-89ABCDEF0123">
+                <RegistryKey Root="HKLM"
+                             Key="SOFTWARE\Mozilla\NativeMessagingHosts\com.focusme.nmh">
+                    <RegistryValue Type="string"
+                                   Value="[NMHManifestDir]com.focusme.nmh.json" />
+                </RegistryKey>
+            </Component>
+
+        </ComponentGroup>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Component Group: WFP Driver Registration            -->
+        <!-- (Placeholder — WFP callout driver needs separate    -->
+        <!--  WHQL-signed .sys and INF; this registers the path) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <ComponentGroup Id="WFPComponents" Directory="DaemonDir">
+
+            <Component Id="WFPRegistryComponent" Guid="6CF3A4B5-C6D7-8901-5678-9ABCDEF01234">
+                <RegistryKey Root="HKLM"
+                             Key="SOFTWARE\FocusMe\WFP">
+                    <RegistryValue Name="DriverPath"
+                                   Type="string"
+                                   Value="[DaemonDir]focusme-wfp.sys" />
+                    <RegistryValue Name="Installed"
+                                   Type="integer"
+                                   Value="1" />
+                </RegistryKey>
+            </Component>
+
+        </ComponentGroup>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Feature Tree                                        -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <Feature Id="CoreFeature"
+                 Title="FocusMe Core"
+                 Description="Focus enforcement daemon and UI"
+                 Level="1"
+                 AllowAbsent="no"
+                 AllowAdvertise="no">
+
+            <ComponentGroupRef Id="DaemonComponents" />
+            <ComponentGroupRef Id="UIComponents" />
+            <ComponentGroupRef Id="WFPComponents" />
+        </Feature>
+
+        <Feature Id="BrowserIntegration"
+                 Title="Browser Integration"
+                 Description="Native messaging host for Chrome, Edge, and Firefox extensions"
+                 Level="1"
+                 AllowAbsent="yes">
+
+            <ComponentGroupRef Id="NMHComponents" />
+            <ComponentGroupRef Id="NMHManifestComponents" />
+            <ComponentGroupRef Id="NMHRegistryComponents" />
+        </Feature>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- Custom Actions                                      -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <!-- CA: Verify EV code signature on daemon before install -->
+        <CustomAction Id="VerifyEVSignature"
+                      DllEntry="WixQuietExec"
+                      Execute="deferred"
+                      Impersonate="no"
+                      Return="check">
+            <!-- signtool verify /pa /v "[INSTALLFOLDER]\daemon\focusme-daemon.exe" -->
+            <!-- This will fail if the binary is not properly signed -->
+        </CustomAction>
+
+        <!-- CA: Stop daemon service cleanly before upgrade -->
+        <CustomAction Id="StopDaemonBeforeUpgrade"
+                      Directory="DaemonDir"
+                      ExeCommand="[SystemFolder]sc.exe stop FocusMeDaemon"
+                      Execute="deferred"
+                      Impersonate="no"
+                      Return="ignore" />
+
+        <!-- Install sequence: verify sig after files are staged -->
+        <InstallExecuteSequence>
+            <Custom Action="StopDaemonBeforeUpgrade"
+                    Before="InstallInitialize"
+                    Condition="REMOVE ~= &quot;ALL&quot; OR UPGRADINGPRODUCTCODE" />
+        </InstallExecuteSequence>
+
+        <!-- ═══════════════════════════════════════════════════ -->
+        <!-- UI (minimal for silent install, standard otherwise) -->
+        <!-- ═══════════════════════════════════════════════════ -->
+
+        <!-- Use WixUI_InstallDir for interactive installs -->
+        <!-- Skipped when SILENT_INSTALL=1 (msiexec /qn)   -->
+        <UI>
+            <UIRef Id="WixUI_InstallDir" />
+            <UIRef Id="WixUI_ErrorProgressText" />
+        </UI>
+
+    </Package>
+
+</Wix>

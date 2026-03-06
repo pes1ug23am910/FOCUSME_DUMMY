@@ -1,0 +1,62 @@
+# ============================================================
+# FILE:        Cargo.toml
+# MODULE:      Phase 5 — Cloud Backend
+# TASK:        T-060 (scaffold)
+# PLATFORM:    linux (server)
+# AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+# GENERATED:   Session 7
+# DEPENDENCIES: axum 0.7, sqlx 0.7, tokio, argon2, jsonwebtoken, tower
+# ============================================================
+
+[package]
+name = "focusme-backend"
+version = "0.1.0"
+edition = "2021"
+description = "FocusMe cloud backend — sync, auth, family dashboard"
+authors = ["FocusMe Engineering"]
+license = "Proprietary"
+rust-version = "1.75"
+
+[dependencies]
+# Web framework
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Database
+sqlx = { version = "0.7", features = [
+    "postgres",
+    "runtime-tokio-tls",
+    "uuid",
+    "chrono",
+    "migrate",
+] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Auth
+argon2 = "0.5"
+jsonwebtoken = "9"
+sha2 = "0.10"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dotenvy = "0.15"
+thiserror = "1"
+anyhow = "1"
+hex = "0.4"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+reqwest = { version = "0.11", features = ["json"] }
+tower = { version = "0.4", features = ["util"] }
+serde_yaml = "0.9"

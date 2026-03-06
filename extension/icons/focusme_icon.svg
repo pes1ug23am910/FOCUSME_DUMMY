@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FILE:        focusme_icon.svg
+  MODULE:      Extension Icons — Source SVG
+  TASK:        Extension icon source
+  AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+  SESSION:     5
+  PURPOSE:     SVG source for generating icon16.png, icon48.png, icon128.png
+  EXPORT:      See README.md in this directory for commands
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <!-- Brand gradient: deep blue to teal -->
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563EB;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0891B2;stop-opacity:1" />
+    </linearGradient>
+    <!-- Inner glow -->
+    <radialGradient id="innerGlow" cx="50%" cy="35%" r="50%">
+      <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:0.3" />
+      <stop offset="100%" style="stop-color:#2563EB;stop-opacity:0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Shield body -->
+  <path d="M64 8 L112 28 L112 60 C112 88 92 110 64 120 C36 110 16 88 16 60 L16 28 Z"
+        fill="url(#shieldGrad)"
+        stroke="none" />
+
+  <!-- Inner glow overlay -->
+  <path d="M64 8 L112 28 L112 60 C112 88 92 110 64 120 C36 110 16 88 16 60 L16 28 Z"
+        fill="url(#innerGlow)"
+        stroke="none" />
+
+  <!-- Shield border (subtle) -->
+  <path d="M64 8 L112 28 L112 60 C112 88 92 110 64 120 C36 110 16 88 16 60 L16 28 Z"
+        fill="none"
+        stroke="#1E40AF"
+        stroke-width="2"
+        stroke-linejoin="round" />
+
+  <!-- Focus ring / crosshair — outer circle -->
+  <circle cx="64" cy="58" r="24"
+          fill="none"
+          stroke="#FFFFFF"
+          stroke-width="3"
+          stroke-opacity="0.9" />
+
+  <!-- Focus ring — inner circle -->
+  <circle cx="64" cy="58" r="12"
+          fill="none"
+          stroke="#FFFFFF"
+          stroke-width="2.5"
+          stroke-opacity="0.9" />
+
+  <!-- Focus center dot -->
+  <circle cx="64" cy="58" r="4"
+          fill="#FFFFFF"
+          fill-opacity="0.95" />
+
+  <!-- Crosshair lines -->
+  <!-- Top -->
+  <line x1="64" y1="28" x2="64" y2="42"
+        stroke="#FFFFFF" stroke-width="2.5" stroke-opacity="0.8"
+        stroke-linecap="round" />
+  <!-- Bottom -->
+  <line x1="64" y1="74" x2="64" y2="88"
+        stroke="#FFFFFF" stroke-width="2.5" stroke-opacity="0.8"
+        stroke-linecap="round" />
+  <!-- Left -->
+  <line x1="34" y1="58" x2="48" y2="58"
+        stroke="#FFFFFF" stroke-width="2.5" stroke-opacity="0.8"
+        stroke-linecap="round" />
+  <!-- Right -->
+  <line x1="80" y1="58" x2="94" y2="58"
+        stroke="#FFFFFF" stroke-width="2.5" stroke-opacity="0.8"
+        stroke-linecap="round" />
+</svg>

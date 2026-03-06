@@ -1,0 +1,81 @@
+# ============================================================
+# FILE:        .github/dependabot.yml
+# TASK:        A6 (Session 6 — Polish & Hardening)
+# AUTHOR:      FocusMe Co-Pilot (Claude Opus)
+# GENERATED:   Session 6
+# PURPOSE:     Automated dependency security updates across all ecosystems
+# ============================================================
+
+version: 2
+updates:
+  # ── Rust (Cargo) ────────────────────────────────────────────
+
+  - package-ecosystem: "cargo"
+    directory: "/daemon"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "security"]
+    commit-message:
+      prefix: "chore(daemon)"
+
+  - package-ecosystem: "cargo"
+    directory: "/extension/native_messaging_host"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "chore(nmh)"
+
+  - package-ecosystem: "cargo"
+    directory: "/linux"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "chore(linux)"
+
+  - package-ecosystem: "cargo"
+    directory: "/ui/src-tauri"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "chore(tauri)"
+
+  # ── JavaScript (npm) ───────────────────────────────────────
+
+  - package-ecosystem: "npm"
+    directory: "/extension"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "chore(extension)"
+
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "chore(ui)"
+
+  # ── Android (Gradle) ───────────────────────────────────────
+
+  - package-ecosystem: "gradle"
+    directory: "/android"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "android"]
+    commit-message:
+      prefix: "chore(android)"
+
+  # ── GitHub Actions ─────────────────────────────────────────
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "chore(ci)"

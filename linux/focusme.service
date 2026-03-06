@@ -1,0 +1,69 @@
+# ============================================================
+# FocusMe Daemon — systemd service unit file
+# Task: T-015 (Linux daemon packaging)
+# ============================================================
+#
+# Install to: /etc/systemd/system/focusme.service
+# Enable:     sudo systemctl enable focusme
+# Start:      sudo systemctl start focusme
+# Logs:       journalctl -u focusme -f
+#
+
+[Unit]
+Description=FocusMe Enforcement Daemon
+Documentation=https://github.com/nicegui/focusme
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/focusme-daemon
+ExecReload=/bin/kill -HUP $MAINPID
+
+# Restart policy
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Security hardening (anti-circumvention)
+# Standard user cannot stop the service without password
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+MemoryDenyWriteExecute=true
+LockPersonality=true
+
+# Allow access to /etc/hosts (for HOSTS blocking)
+ReadWritePaths=/etc/hosts
+
+# Allow access to FocusMe data directory
+ReadWritePaths=/var/lib/focusme
+ReadWritePaths=/var/log/focusme
+
+# Run as root (needed for HOSTS file, eBPF, etc.)
+User=root
+Group=root
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=focusme
+
+# Resource limits
+LimitNOFILE=65536
+TimeoutStopSec=30
+
+# Environment
+Environment=RUST_LOG=info
+Environment=FOCUSME_DATA_DIR=/var/lib/focusme
+Environment=FOCUSME_LOG_DIR=/var/log/focusme
+
+[Install]
+WantedBy=multi-user.target
