@@ -12,7 +12,7 @@ rust-version = "1.75"
 libbpf-rs = "0.23"
 
 # System
-nix = { version = "0.28", features = ["fs", "signal", "process", "net"] }
+nix = { version = "0.31", features = ["fs", "signal", "process", "net"] }
 
 # Async runtime
 tokio = { version = "1.35", features = ["rt-multi-thread", "macros", "signal", "net", "io-util", "time"] }
