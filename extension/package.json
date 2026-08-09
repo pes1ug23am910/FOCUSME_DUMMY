@@ -18,7 +18,7 @@
     "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.25.0",
+    "@anthropic-ai/sdk": "^0.78.0",
     "@anthropic-ai/tool-use": "^0.25.0",
     "@types/chrome": "^0.0.268",
     "@types/webextension-polyfill": "^0.12.1",
